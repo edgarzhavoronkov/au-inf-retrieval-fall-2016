@@ -22,8 +22,8 @@ def get_tracks(sqlite_conn):
     return tracks
 
 # join tables for fuck's sake!
-def get_user_liked_track_ids(sqlite_conn, username):
-    liked_ids = []
+def get_user_liked_tracks(sqlite_conn, username):
+    liked = []
     c = sqlite_conn.cursor()
     c.execute("SELECT ID FROM USERS WHERE NAME=?", (username,))
     for row in c.fetchall():
@@ -31,24 +31,26 @@ def get_user_liked_track_ids(sqlite_conn, username):
         c.execute("SELECT TRACKID FROM LIKEDTRACK2USER WHERE USERID=?", (user_id,))
         for another_row in c.fetchall():
             track_id = another_row[0]
-            liked_ids.append(track_id)
-    return liked_ids
+            c.execute("SELECT NAME FROM TRACKS WHERE ID=?", (track_id,))
+            for yet_another_row in c.fetchall():
+                liked.append(yet_another_row[0])
+    return liked
 
 def dump(sqlite_conn, output):
     usernames = get_usernames(sqlite_conn)
-    tracknames = get_tracks(sqlite_conn)
+    tracknames = list(set(get_tracks(sqlite_conn)))
     n_tracks = len(tracknames)
-    d = {'track': tracknames}
+    d = {}
     for username in usernames:
         d.update({username : [0]*n_tracks})
-    df = pd.DataFrame(d)
+    df = pd.DataFrame(d, index=tracknames)
     for username in usernames:
-        liked_tracks_ids = get_user_liked_track_ids(sqlite_conn, username)
-        for track_id in liked_tracks_ids:
-            df = df.set_value(track_id - 1, username, 1)
+        liked_tracks = get_user_liked_tracks(sqlite_conn, username)
+        for track in liked_tracks:
+            df = df.set_value(track, username, 1)
 
-    df.to_csv(output, encoding='utf-8')
+    df.to_csv(output, index_label='track', encoding='utf-8')
 
 if __name__ == "__main__":
     global conn
-    dump(conn, '../data/track2users.csv')
+    dump(conn, '../data/track2users1.csv')
