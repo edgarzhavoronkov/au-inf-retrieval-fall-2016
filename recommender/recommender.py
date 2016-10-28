@@ -1,9 +1,10 @@
 import pandas as pd
 import sys
-from scipy.spatial.distance import cosine
+from scipy.spatial.distance import pdist, squareform
 
 # TODO: re-sample data
 data = pd.read_csv('../data/sample.csv', encoding='utf-8')
+data = data.drop('Unnamed: 0', 1)
 
 def signup(username):
     pass
@@ -15,14 +16,14 @@ def like(username, track):
 def getScore(history, similarities):
     return sum(history * similarities) / sum(similarities)
 
-# поскольку все дедлайны просраны, то мы используем косинусное расстояние, как было написано в туториале
+
 def recommend(username):
     data_no_user = data.drop('user', 1)
-    data_ibs = pd.DataFrame(index=data_no_user.columns, columns=data_no_user.columns)
-    rng = range(0, len(data_ibs.columns))
-    for i in rng:
-        for j in rng:
-            data_ibs.ix[i, j] = 1 - cosine(data_no_user.ix[:, i], data_no_user.ix[:, j])
+    # откуда столько NaN? Нормальная метрика похожести песен?
+    data_ibs = pd.DataFrame(
+        squareform(pdist(data_no_user, 'jaccard'))
+        , index=data_no_user.columns
+        , columns=data_no_user.columns)
 
     data_neighbours = pd.DataFrame(index=data_ibs.columns, columns=range(1, 11))
 
