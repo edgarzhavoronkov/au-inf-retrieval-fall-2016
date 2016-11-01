@@ -53,4 +53,4 @@ def dump(sqlite_conn, output):
 
 if __name__ == "__main__":
     global conn
-    dump(conn, '../data/track2users1.csv')
+    dump(conn, '../data/track2users2.csv')

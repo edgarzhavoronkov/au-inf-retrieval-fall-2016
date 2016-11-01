@@ -10,8 +10,6 @@ db = None
 conn = None
 crawl_order = []
 max_top_track_pages = 10
-max_top_albums_pages = 10
-max_top_artists_pages = 10
 SLEEP_BETWEEN_TOPTRACKS = 5  # seconds
 SLEEP_BETWEEN_FRIENDS = 5  # seconds
 SLEEP_BETWEEN_USERS = 10  # seconds
@@ -29,8 +27,6 @@ def do_crawl(user_queue: list, sqlite_conn):
 
         crawl_user_tracks(current_user, user_id, sqlite_conn)
         crawl_user_liked_tracks(current_user, user_id, sqlite_conn)
-        crawl_user_albums(current_user, user_id, sqlite_conn)
-        crawl_user_artists(current_user, user_id, sqlite_conn)
 
         user_queue += get_user_friends(current_user)
 
@@ -55,84 +51,40 @@ def crawl_user_tracks(username, user_id, conn):
     write_tracks(top_tracks, conn)
 
 
-def crawl_user_albums(username, user_id, conn):
-    top_albums = get_user_top_albums(username)
-    write_albums(top_albums, conn)
-
-
-def crawl_user_artists(username, user_id, conn):
-    top_albums = get_user_top_artists(username)
-    write_artists(top_albums, conn)
-
-
 def crawl_user_liked_tracks(username, user_id, conn):
     liked_tracks = get_user_liked_tracks(username)
     write_liked_tracks_to_user(liked_tracks, user_id, conn)
 
 
+def get_number_of_user_top_tracks(username):
+    total_tracks_url = get_url("user.gettoptracks", username)
+    print("Getting user's {0} number of tracks".format(username))
+    data = urlopen(total_tracks_url).read().decode("utf-8")
+    result = json.loads(data)["toptracks"]["@attr"]["total"]
+    print("User {0} has {1} tracks total".format(username, result))
+    return result
+
+
 def get_user_top_tracks(username):
     tracks = []
-    for i in range(max_top_track_pages):
-        print("Getting tracks of user {0} page {1}".format(username, i))
-        top_tracks_url = get_url("user.gettoptracks", username, "&limit=200&page={0}".format(i + 1))
-        data = urlopen(top_tracks_url).read().decode("utf-8")
-        result = json.loads(data)
-        for track in result["toptracks"]["track"]:
-            tracks.append({
-                "name": track["name"],
-                "mbid": track["mbid"]
-                # "artist": {} if "artist" not in track else decode_artist(track["artist"]),
-                # "album": {} if "album" not in track else decode_album(track["album"])
-            })
-        if int(result["toptracks"]["@attr"]["totalPages"]) == i + 1:
-            break
-        time.sleep(SLEEP_BETWEEN_TOPTRACKS)
+    user_tracks_count = get_number_of_user_top_tracks(username)
+
+    print("Getting 10% of top tracks of user {0} ".format(username))
+    top_tracks_url = get_url("user.gettoptracks", username, "&limit={0}".format(min((int)(user_tracks_count) // 10 + 1, 5000)))
+    data = urlopen(top_tracks_url).read().decode("utf-8")
+    result = json.loads(data)
+    for track in result["toptracks"]["track"]:
+        tracks.append({
+            "name": track["name"],
+            # "mbid": track["mbid"]
+        })
+    time.sleep(SLEEP_BETWEEN_TOPTRACKS)
     return tracks
-
-
-def get_user_top_albums(username):
-    albums = []
-    for i in range(max_top_albums_pages):
-        print("Getting albums of user {0} page {1}".format(username, i))
-        top_albums_url = get_url("user.gettopalbums", username, "&limit=200&page={0}".format(i + 1))
-        data = urlopen(top_albums_url).read().decode("utf-8")
-        result = json.loads(data)
-        for album in result["topalbums"]["album"]:
-            albums.append({
-                "name": album["name"],
-                "mbid": album["mbid"]
-                # "artist": {} if "artist" not in album else decode_artist(album["artist"]),
-                # "album": {} if "album" not in album else decode_album(album["album"])
-            })
-        if int(result["topalbums"]["@attr"]["totalPages"]) == i + 1:
-            break
-        time.sleep(SLEEP_BETWEEN_TOPTRACKS)
-    return albums
-
-
-def get_user_top_artists(username):
-    artists = []
-    for i in range(max_top_artists_pages):
-        print("Getting artists of user {0} page {1}".format(username, i))
-        top_albums_url = get_url("user.gettopartists", username, "&limit=200&page={0}".format(i + 1))
-        data = urlopen(top_albums_url).read().decode("utf-8")
-        result = json.loads(data)
-        for artist in result["topartists"]["artist"]:
-            artists.append({
-                "name": artist["name"],
-                "mbid": artist["mbid"]
-                # "artist": {} if "artist" not in album else decode_artist(album["artist"]),
-                # "album": {} if "album" not in album else decode_album(album["album"])
-            })
-        if int(result["topartists"]["@attr"]["totalPages"]) == i + 1:
-            break
-        time.sleep(SLEEP_BETWEEN_TOPTRACKS)
-    return artists
 
 
 def get_user_liked_tracks(username):
     liked = []
-    for i in range(max_top_artists_pages):
+    for i in range(max_top_track_pages):
         print("Getting liked tracks of user {0} page {1}".format(username, i))
         liked_tracks_url = get_url("user.getlovedtracks", username, "&limit=200&page={0}".format(i + 1))
         data = urlopen(liked_tracks_url).read().decode("utf-8")
@@ -140,7 +92,7 @@ def get_user_liked_tracks(username):
         for track in result["lovedtracks"]["track"]:
             liked.append({
                 "name": track["name"],
-                "mbid": track["mbid"]
+                # "mbid": track["mbid"]
             })
         if int(result["lovedtracks"]["@attr"]["totalPages"]) == i + 1:
             break
@@ -148,41 +100,9 @@ def get_user_liked_tracks(username):
     return liked
 
 
-def get_track_tags(track):
-    pass
-
-
-def get_artist_tags(artist):
-    pass
-
-
-def get_album_tags(album):
-    pass
-
-
-def decode_artist(artist):
-    return {"name": artist["name"], "mbid": artist["mbid"]}
-
-
-def decode_album(album):
-    return {"name": album["name"], "mbid": album["mbid"]}
-
-
 def write_tracks(tracks, conn):
     c = conn.cursor()
-    c.executemany("INSERT INTO TRACKS (NAME, MBID) VALUES (:name, :mbid)", tracks)
-    conn.commit()
-
-
-def write_albums(albums, conn):
-    c = conn.cursor()
-    c.executemany("INSERT INTO ALBUMS(NAME, MBID) VALUES (:name, :mbid)", albums)
-    conn.commit()
-
-
-def write_artists(artists, conn):
-    c = conn.cursor()
-    c.executemany("INSERT INTO ARTISTS(NAME, MBID) VALUES (:name, :mbid)", artists)
+    c.executemany("INSERT INTO TRACKS (NAME) VALUES (:name)", tracks)
     conn.commit()
 
 
@@ -196,7 +116,6 @@ def write_liked_tracks_to_user(tracks, user_id, conn):
             conn.commit()
 
 
-
 def get_user_friends(user):
     i = 1
     result = []
@@ -205,11 +124,15 @@ def get_user_friends(user):
         friends_url = get_url("user.getFriends", user)
         data = urlopen(friends_url).read().decode("utf-8")
         data_obj = json.loads(data)
-        for user in data_obj["friends"]["user"]:
-            result.append(user["name"])
-        if int(data_obj["friends"]["@attr"]["totalPages"]) < i:
-            i += 1
-            time.sleep(SLEEP_BETWEEN_FRIENDS)
+        if "friends" in data_obj:
+            for user in data_obj["friends"]["user"]:
+                if "name" in user:
+                    result.append(user["name"])
+            if int(data_obj["friends"]["@attr"]["totalPages"]) < i:
+                i += 1
+                time.sleep(SLEEP_BETWEEN_FRIENDS)
+            else:
+                break
         else:
             break
     return result
@@ -236,24 +159,18 @@ def initialize_db(filename):
     conn = sqlite3.connect(filename)
     if tables_init_needed:
         conn.execute('''CREATE TABLE USERS (ID INTEGER PRIMARY KEY AUTOINCREMENT, NAME TEXT NOT NULL)''')
-        conn.execute('''CREATE TABLE ARTISTS (ID INTEGER PRIMARY KEY AUTOINCREMENT, NAME TEXT NOT NULL,
-        MBID TEXT NOT NULL)''')
-        conn.execute('''CREATE TABLE ALBUMS (ID INTEGER PRIMARY KEY AUTOINCREMENT, NAME TEXT NOT NULL, MBID TEXT NOT NULL,
-         ARTISTID INTEGER, FOREIGN KEY(ARTISTID) REFERENCES ARTISTS(ID) )''')
-        conn.execute('''CREATE TABLE TAGS (ID INTEGER PRIMARY KEY AUTOINCREMENT, NAME TEXT NOT NULL)''')
-        conn.execute('''CREATE TABLE TRACKS (ID INTEGER PRIMARY KEY AUTOINCREMENT, NAME TEXT NOT NULL, MBID TEXT NOT NULL,
-        ALBUMID INTEGER, ARTISTID INTEGER, FOREIGN KEY(ALBUMID) REFERENCES ALBUMS(ID),
-        FOREIGN KEY(ARTISTID) REFERENCES ARTISTS (ID))''')
+
+        conn.execute('''CREATE TABLE TRACKS (ID INTEGER PRIMARY KEY AUTOINCREMENT, NAME TEXT UNIQUE ON CONFLICT IGNORE NOT NULL)''')
+
         conn.execute('''CREATE TABLE LIKEDTRACK2USER (USERID INT NOT NULL, TRACKID INT NOT NULL,
         FOREIGN KEY(USERID) REFERENCES USERS(ID), FOREIGN KEY(TRACKID) REFERENCES TRACKS(ID))''')
-        conn.execute('''CREATE TABLE TRACK2TAG (TAGID INT NOT NULL, TRACKID INT NOT NULL,
-        FOREIGN KEY(TAGID) REFERENCES TAGS(ID), FOREIGN KEY(TRACKID) REFERENCES TRACKS(ID))''')
+
     return conn
 
 
 if __name__ == "__main__":
     # main()
     global conn
-    conn = initialize_db("tracks2users.sqlite")
-    do_crawl(["rj"], conn)
+    conn = initialize_db("onlyTracks.sqlite")
+    do_crawl(["EdgarSeal"], conn)
     conn.close()

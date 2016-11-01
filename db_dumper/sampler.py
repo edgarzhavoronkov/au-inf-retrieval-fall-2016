@@ -1,12 +1,12 @@
 import pandas as pd
 
-data = pd.read_csv('../data/track2users1.csv', index_col='track')
+data = pd.read_csv('../data/tracks2users2_wo_zeros.csv', index_col='track')
 
 # берем выборку из ста случайных песен
-data = data.sample(100)
+data = data.sample(200)
 data = data.transpose()
 # и ста случайных пользователей
-data = data.sample(100)
+# data = data.sample(200)
 
 
 data['user'] = data.index

@@ -1,6 +1,6 @@
 import pandas as pd
 import sys
-from scipy.spatial.distance import pdist, squareform
+from scipy.spatial.distance import pdist, squareform, jaccard
 
 # TODO: re-sample data
 data = pd.read_csv('../data/sample.csv', encoding='utf-8')
@@ -18,12 +18,19 @@ def getScore(history, similarities):
 
 
 def recommend(username):
+    if username in data['user']:
+        print("No such user in dataframe")
+        return
+
     data_no_user = data.drop('user', 1)
-    # откуда столько NaN? Нормальная метрика похожести песен?
+
     data_ibs = pd.DataFrame(
-        squareform(pdist(data_no_user, 'jaccard'))
-        , index=data_no_user.columns
-        , columns=data_no_user.columns)
+        data=squareform(pdist(data_no_user.T, 'jaccard')),
+        index=data_no_user.columns,
+        columns=data_no_user.columns
+    )
+
+    data_ibs = 1 - data_ibs
 
     data_neighbours = pd.DataFrame(index=data_ibs.columns, columns=range(1, 11))
 
@@ -58,6 +65,7 @@ def recommend(username):
     data_recommend['user'] = data['user']
     data_recommend.set_index('user', inplace=True)
     # Print a sample
+
     print(data_recommend.T[username][:4])
 
 
