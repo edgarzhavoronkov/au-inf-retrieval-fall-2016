@@ -38,7 +38,7 @@ def recommend(username):
         data_neighbours.ix[i, :10] = data_ibs.ix[0:, i].sort_values(ascending=False)[:10].index
 
     data_sims = pd.DataFrame(index=data.index, columns=data.columns)
-    data_sims.ix[:, :1] = data.ix[:, :1]
+    data_sims['user'] = data['user']
 
     for i in range(0, len(data_sims.index)):
         for j in range(0, len(data_sims.columns) - 1):
