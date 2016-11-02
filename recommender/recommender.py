@@ -6,21 +6,39 @@ from scipy.spatial.distance import pdist, squareform, jaccard
 data = pd.read_csv('../data/sample.csv', encoding='utf-8')
 data = data.drop('Unnamed: 0', 1)
 
+
 def signup(username):
     pass
 
+
 def like(username, track):
     pass
+
 
 # Helper function to get similarity scores
 def getScore(history, similarities):
     return sum(history * similarities) / sum(similarities)
 
 
+def filter_data(data, user):
+    songmask = data[data['user'] == user].values[0] == 1
+    users_with_same_songs = data.T[songmask].sum() >= 1
+
+    songmask[-1] = True # to get username
+    selected = data[users_with_same_songs].T[songmask].T
+    return selected
+
+
+
+
 def recommend(username):
-    if username in data['user']:
+    global data
+
+    if username not in data['user'].values:
         print("No such user in dataframe")
         return
+
+    data = filter_data(data, username)
 
     data_no_user = data.drop('user', 1)
 
@@ -32,10 +50,12 @@ def recommend(username):
 
     data_ibs = 1 - data_ibs
 
-    data_neighbours = pd.DataFrame(index=data_ibs.columns, columns=range(1, 11))
+    top_songs_number = min(len(data_ibs.columns), 10)
+
+    data_neighbours = pd.DataFrame(index=data_ibs.columns, columns=range(1, top_songs_number+1 ))
 
     for i in range(0, len(data_ibs.columns)):
-        data_neighbours.ix[i, :10] = data_ibs.ix[0:, i].sort_values(ascending=False)[:10].index
+        data_neighbours.ix[i, :top_songs_number] = data_ibs.ix[0:, i].sort_values(ascending=False)[:top_songs_number].index
 
     data_sims = pd.DataFrame(index=data.index, columns=data.columns)
     data_sims.ix[:, :1] = data.ix[:, :1]
@@ -45,28 +65,31 @@ def recommend(username):
             user = data_sims.index[i]
             product = data_sims.columns[j]
 
-            if data.ix[i][j] == 1:
-                data_sims.ix[i][j] = 0
+            if data.ix[user][product] == 1:
+                data_sims.ix[user][product] = 0
             else:
-                product_top_names = data_neighbours.ix[product][1:10]
-                product_top_sims = data_ibs.ix[product].sort_values(ascending=False)[1:10]
+                product_top_names = data_neighbours.ix[product][1:top_songs_number]
+                product_top_sims = data_ibs.ix[product].sort_values(ascending=False)[1:top_songs_number]
                 user_purchases = data_no_user.ix[user, product_top_names]
 
-                data_sims.ix[i][j] = getScore(user_purchases, product_top_sims)
+                data_sims.ix[user][product] = getScore(user_purchases, product_top_sims)
 
     # Get the top songs
-    data_recommend = pd.DataFrame(index=data_sims.index, columns=['user', '1', '2', '3', '4', '5', '6'])
+    rec_songs_number = min(top_songs_number, 6)
+    columns = ['user', ] + [str(i) for i in range(1, rec_songs_number + 1)]
+    data_recommend = pd.DataFrame(index=data_sims.index, columns=columns)
     data_recommend.ix[0:, 0] = data_sims.ix[:, 0]
 
     # Instead of top song scores, we want to see names
     for i in range(0, len(data_sims.index)):
-        data_recommend.ix[i, 1:] = data_sims.ix[i, :].sort_values(ascending=False).ix[1:7, ].index.transpose()
+        u = data_sims.index[i]
+        data_recommend.ix[u, 1:] = data_sims.ix[u, :-1].sort_values(ascending=False).ix[:(rec_songs_number+1), ].index.transpose()
 
     data_recommend['user'] = data['user']
     data_recommend.set_index('user', inplace=True)
     # Print a sample
 
-    print(data_recommend.T[username][:4])
+    print(data_recommend.T[username][:rec_songs_number+1])
 
 
 if __name__ == '__main__':
