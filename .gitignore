@@ -1,3 +1,6 @@
 .idea/
-data/
+data/*.csv
+data/*.sqlite
 dummy_crawler/*.sqlite
+
+!data/sample.csv
