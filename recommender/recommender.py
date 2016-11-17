@@ -1,9 +1,13 @@
+import numpy as np
 import pandas as pd
 import sys
+import csv
+from scipy.sparse import csc_matrix, coo_matrix
 from scipy.spatial.distance import pdist, squareform, jaccard
 
 # TODO: re-sample data
 data = pd.read_csv('../data/sample.csv', encoding='utf-8')
+data = data.to_sparse(fill_value=0)
 data = data.drop('Unnamed: 0', 1)
 
 def signup(username):
