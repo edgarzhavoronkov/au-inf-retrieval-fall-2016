@@ -1,15 +1,17 @@
+import csv
+
 import pandas as pd
 import sys
 from scipy.spatial.distance import pdist, squareform, jaccard
-from scipy.sparse import csc_matrix
+from scipy.sparse import csc_matrix, lil_matrix
 from sparsesvd import sparsesvd
 import numpy as np
 import math
 from scipy.sparse.linalg import *
 
 # TODO: re-sample data
-data = pd.read_csv('../data/sample.csv', encoding='utf-8')
-data = data.drop('Unnamed: 0', 1)
+#data = pd.read_csv('../data/likedTracks2users.csv', encoding='utf-8')
+#data = data.drop('Unnamed: 0', 1)
 
 def signup(username):
     pass
@@ -21,20 +23,33 @@ def like(username, track):
 def getScore(history, similarities):
     return sum(history * similarities) / sum(similarities)
 
+def read_data(filename):
+    with open(filename, 'r', encoding='utf-8') as datafile:
+        dataReader = csv.reader(datafile, delimiter=',')
+        users = dataReader.__next__()[1:]
+        songs = []
+        result = lil_matrix((len(users), 320495))
+        song = 0
+        for row in dataReader:
+            songs.append(row[0])
+            for i in range(0,len(row)-1):
+                if row[i+1] == '1':
+                    result.rows[i].append(song)
+                    result.data[i].append(1)
+            song+=1
+        return users, songs, result
+
+
 def recommend_svd(username):
     K = 90
-    if username in data['user']:
+    users, songs, data = read_data("../data/likedTracks2users.csv")
+    if username not in users:
         print("No such user in dataframe")
         return
 
-    userindex = data['user'][data['user']==username].index[0]
+    userindex = users.index(username)
 
-    data_no_user = data.drop('user', 1)
-    sparse_data = csc_matrix(data_no_user, dtype=np.float32)
-
-    if username in data['user']:
-        print("No such user in dataframe")
-        return
+    sparse_data = data.tocsc()
 
     U, s, Vt = sparsesvd(sparse_data, K)
 
@@ -49,22 +64,21 @@ def recommend_svd(username):
 
     rightTerm = S * Vt
 
-    estimatedRatings = np.zeros(shape=data_no_user.shape, dtype=np.float16)
     prod = U[userindex, :] * rightTerm
 
     result = []
 
     # we convert the vector to dense format in order to get the indices of the movies with the best estimated ratings
-    estimatedRatings[userindex, :] = prod.todense()
-    recom = (-estimatedRatings[userindex, :]).argsort()[:250]
+    estimatedRatings = prod.todense()
+    recom = (-estimatedRatings).argsort()[:250]
     for r in recom:
-        if data_no_user.iloc[[userindex],[r]].get_values()[0][0]==0:
+        if data[userindex][r]==0:
             result.append(r)
 
             if len(result) == 5:
                 break
 
-    print(list(data.iloc[[],result].columns))
+    print([songs[i] for i in result])
 
 
 def recommend(username):
