@@ -1,6 +1,11 @@
 import pandas as pd
 import sys
 from scipy.spatial.distance import pdist, squareform, jaccard
+from scipy.sparse import csc_matrix
+from sparsesvd import sparsesvd
+import numpy as np
+import math
+from scipy.sparse.linalg import *
 
 # TODO: re-sample data
 data = pd.read_csv('../data/sample.csv', encoding='utf-8')
@@ -15,6 +20,51 @@ def like(username, track):
 # Helper function to get similarity scores
 def getScore(history, similarities):
     return sum(history * similarities) / sum(similarities)
+
+def recommend_svd(username):
+    K = 90
+    if username in data['user']:
+        print("No such user in dataframe")
+        return
+
+    userindex = data['user'][data['user']==username].index[0]
+
+    data_no_user = data.drop('user', 1)
+    sparse_data = csc_matrix(data_no_user, dtype=np.float32)
+
+    if username in data['user']:
+        print("No such user in dataframe")
+        return
+
+    U, s, Vt = sparsesvd(sparse_data, K)
+
+    dim = (len(s), len(s))
+    S = np.zeros(dim, dtype=np.float32)
+    for i in range(0, len(s)):
+        S[i, i] = math.sqrt(s[i])
+
+    U = csc_matrix(np.transpose(U), dtype=np.float32)
+    S = csc_matrix(S, dtype=np.float32)
+    Vt = csc_matrix(Vt, dtype=np.float32)
+
+    rightTerm = S * Vt
+
+    estimatedRatings = np.zeros(shape=data_no_user.shape, dtype=np.float16)
+    prod = U[userindex, :] * rightTerm
+
+    result = []
+
+    # we convert the vector to dense format in order to get the indices of the movies with the best estimated ratings
+    estimatedRatings[userindex, :] = prod.todense()
+    recom = (-estimatedRatings[userindex, :]).argsort()[:250]
+    for r in recom:
+        if data_no_user.iloc[[userindex],[r]].get_values()[0][0]==0:
+            result.append(r)
+
+            if len(result) == 5:
+                break
+
+    print(list(data.iloc[[],result].columns))
 
 
 def recommend(username):
@@ -72,4 +122,4 @@ def recommend(username):
 if __name__ == '__main__':
     global data
     username = sys.argv[1]
-    recommend(username)
+    recommend_svd(username)
