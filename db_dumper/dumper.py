@@ -33,8 +33,14 @@ def get_user_liked_tracks(sqlite_conn, username):
 
 if __name__ == "__main__":
     global conn
-    users = get_users(conn)
+    all_users = get_users(conn)
+    users = []
     tracks = get_tracks(conn)
+
+    for user in all_users:
+        liked_tracks = get_user_liked_tracks(conn, user)
+        if len(liked_tracks) > 10:
+            users.append(user)
 
     with open('../data/username2Id.csv', 'w', newline='', encoding='utf-8') as users_file:
         user_writer = csv.writer(users_file, delimiter=';')
@@ -53,15 +59,3 @@ if __name__ == "__main__":
             for track in liked_tracks:
                 track_id = tracks.index(track)
                 user_track_writer.writerow([i, track_id])
-
-    # n_tracks = len(tracknames)
-    # d = {}
-    # for username in usernames:
-    #     d.update({username: [0] * n_tracks})
-    # df = pd.DataFrame(d, index=tracknames)
-    # for username in usernames:
-    #     liked_tracks = get_user_liked_tracks(sqlite_conn, username)
-    #     for track in liked_tracks:
-    #         df = df.set_value(track, username, 1)
-
-    # df.to_csv(output, index_label='track', encoding='utf-8')

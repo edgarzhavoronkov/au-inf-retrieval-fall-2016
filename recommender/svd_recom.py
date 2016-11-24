@@ -5,7 +5,8 @@ from sparsesvd import sparsesvd
 from scipy.sparse import csr_matrix, csc_matrix
 
 MAX_TRACKID = 320495
-MAX_USERID = 1742
+MAX_USERID = 1517
+
 
 def readUsers():
     users = [''] * MAX_USERID
@@ -78,6 +79,6 @@ if __name__ == '__main__':
     tracks = readTracks()
     U, S, Vt = computeSVD(urm, 50)
     uTest = readUsersTest()
-    print(S.shape)
+    print(U.shape)
 
 
