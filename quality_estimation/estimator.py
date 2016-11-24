@@ -1,29 +1,18 @@
 import csv
 import math
-import sys
+import random
 from sparsesvd import sparsesvd
 
 import numpy as np
-from scipy.sparse import csc_matrix
-
-
-def signup(username):
-    pass
-
-
-def like(username, track):
-    pass
+from scipy.sparse import lil_matrix, csc_matrix
 
 
 MAX_TRACKID = 320495
 MAX_USERID = 1517
 
-
-def read_data():
-    data = read_urm('../data/urm.csv')
-    tracks = read_tracks('../data/trackname2Id.csv')
-    users = read_users('../data/username2Id.csv')
-    return users, tracks, data
+test_set_size = int(0.2 * MAX_TRACKID)
+train_set_size = MAX_TRACKID - test_set_size
+test_indices = random.sample(range(MAX_TRACKID), test_set_size)
 
 
 def read_users(filename):
@@ -50,13 +39,18 @@ def read_urm(filename):
         urm_reader = csv.reader(dataset_file, delimiter=';')
         for row in urm_reader:
             urm[int(row[0]), int(row[1])] = float(1.0)
-    return csc_matrix(urm, dtype=np.float32)
+    return lil_matrix(urm, dtype=np.float32)
 
 
-# TODO: estimate rank of decomposition!
-def recommend_svd(username):
+def read_data():
+    data = read_urm('../data/urm.csv')
+    tracks = read_tracks('../data/trackname2Id.csv')
+    users = read_users('../data/username2Id.csv')
+    return users, tracks, data
+
+
+def estimate_rates(users, data, username):
     K = 90
-    users, songs, data = read_data()
     if username not in users:
         print("No such user in dataframe")
         return
@@ -78,21 +72,32 @@ def recommend_svd(username):
 
     prod = U[user_index, :] * rightTerm
 
-    result = []
+    return prod.todense()
 
-    estimatedRatings = prod.todense()
-    recom = ((-estimatedRatings).argsort()[:250]).tolist()[0]
-    for r in recom:
-        if data[user_index, r] == 0:
-            result.append(r)
 
-            if len(result) == 5:
-                break
+def prepare_data(data):
+    res = data.copy()
+    for i in range(MAX_USERID):
+        for j in test_indices:
+            if data[i, j] != 0:
+                res[i,j] = 0
+    return res
 
-    print([songs[i] for i in result])
+
+def compute_error(estimated, actual):
+    pass
 
 
 if __name__ == '__main__':
-    global data
-    username = sys.argv[1]
-    recommend_svd(username)
+    users, songs, data = read_data()
+    prepared_data = prepare_data(data)
+    res = []
+    for i in range(len(users)):
+        user = users[i]
+        estimated_ratings = estimate_rates(users, prepared_data, user)
+        error = compute_error(estimated_ratings, data[i, :])
+        pass
+        # get estimated ratings
+        # compute error
+        # append to result
+    # save result to file
