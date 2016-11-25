@@ -2,6 +2,7 @@ import csv
 import math
 import sys
 from sparsesvd import sparsesvd
+from random import random
 
 import numpy as np
 from scipy.sparse import csc_matrix
@@ -17,13 +18,14 @@ def like(username, track):
 
 MAX_TRACKID = 320495
 MAX_USERID = 1517
+TRAIN_RATIO = 0.8
 
 
 def read_data():
-    data = read_urm('../data/urm.csv')
+    data, test_data = read_urm('../data/urm.csv')
     tracks = read_tracks('../data/trackname2Id.csv')
     users = read_users('../data/username2Id.csv')
-    return users, tracks, data
+    return users, tracks, data, test_data
 
 
 def read_users(filename):
@@ -46,17 +48,21 @@ def read_tracks(filename):
 
 def read_urm(filename):
     urm = np.zeros(shape=(MAX_USERID, MAX_TRACKID), dtype=np.float32)
+    test_data = []
     with open(filename, 'r', encoding='utf-8') as dataset_file:
         urm_reader = csv.reader(dataset_file, delimiter=';')
         for row in urm_reader:
-            urm[int(row[0]), int(row[1])] = float(1.0)
-    return csc_matrix(urm, dtype=np.float32)
+            if random() < TRAIN_RATIO:
+                urm[int(row[0]), int(row[1])] = float(1.0)
+            else:
+                test_data.append((int(row[0]), int(row[1])))
+    return csc_matrix(urm, dtype=np.float32), test_data
 
 
 # TODO: estimate rank of decomposition!
 def recommend_svd(username):
     K = 90
-    users, songs, data = read_data()
+    users, songs, data, test_data = read_data()
     if username not in users:
         print("No such user in dataframe")
         return
@@ -76,20 +82,16 @@ def recommend_svd(username):
 
     rightTerm = S * Vt
 
-    prod = U[user_index, :] * rightTerm
+    MAE = 0
+    for user, song in test_data:
+        prod = U[user, :] * rightTerm
+        estimatedRatings = prod.todense()
+        recom = estimatedRatings.tolist()[0]
+        MAE += abs(1.0 - recom[song])
 
-    result = []
+    MAE /= len(test_data)
 
-    estimatedRatings = prod.todense()
-    recom = ((-estimatedRatings).argsort()[:250]).tolist()[0]
-    for r in recom:
-        if data[user_index, r] == 0:
-            result.append(r)
-
-            if len(result) == 5:
-                break
-
-    print([songs[i] for i in result])
+    print(MAE)
 
 
 if __name__ == '__main__':
