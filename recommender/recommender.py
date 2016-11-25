@@ -56,7 +56,7 @@ def read_urm(filename):
 # TODO: estimate rank of decomposition!
 def recommend_svd(username):
     K = 90
-    users, songs, data = read_data()
+    users, tracks, data = read_data()
     if username not in users:
         print("No such user in dataframe")
         return
@@ -89,7 +89,7 @@ def recommend_svd(username):
             if len(result) == 5:
                 break
 
-    print([songs[i] for i in result])
+    print([tracks[i] for i in result])
 
 
 if __name__ == '__main__':

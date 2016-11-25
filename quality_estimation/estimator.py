@@ -4,7 +4,7 @@ import random
 from sparsesvd import sparsesvd
 
 import numpy as np
-from scipy.sparse import lil_matrix, csc_matrix
+from scipy.sparse import csr_matrix, csc_matrix
 
 
 MAX_TRACKID = 320495
@@ -12,7 +12,7 @@ MAX_USERID = 1517
 
 test_set_size = int(0.2 * MAX_TRACKID)
 train_set_size = MAX_TRACKID - test_set_size
-test_indices = random.sample(range(MAX_TRACKID), test_set_size)
+test_indices = set(random.sample(range(MAX_TRACKID), test_set_size))
 
 
 def read_users(filename):
@@ -39,7 +39,17 @@ def read_urm(filename):
         urm_reader = csv.reader(dataset_file, delimiter=';')
         for row in urm_reader:
             urm[int(row[0]), int(row[1])] = float(1.0)
-    return lil_matrix(urm, dtype=np.float32)
+    return csc_matrix(urm, dtype=np.float32)
+
+
+def read_prepared_data(filename):
+    urm = np.zeros(shape=(MAX_USERID, MAX_TRACKID), dtype=np.float32)
+    with open(filename, 'r', encoding='utf-8') as dataset_file:
+        urm_reader = csv.reader(dataset_file, delimiter=';')
+        for row in urm_reader:
+            if not int(row[1]) in test_indices:
+                urm[int(row[0]), int(row[1])] = float(1.0)
+    return csc_matrix(urm, dtype=np.float32)
 
 
 def read_data():
@@ -75,22 +85,13 @@ def estimate_rates(users, data, username):
     return prod.todense()
 
 
-def prepare_data(data):
-    res = data.copy()
-    for i in range(MAX_USERID):
-        for j in test_indices:
-            if data[i, j] != 0:
-                res[i,j] = 0
-    return res
-
-
 def compute_error(estimated, actual):
     pass
 
 
 if __name__ == '__main__':
     users, songs, data = read_data()
-    prepared_data = prepare_data(data)
+    prepared_data = read_prepared_data('../data/urm.csv')
     res = []
     for i in range(len(users)):
         user = users[i]
