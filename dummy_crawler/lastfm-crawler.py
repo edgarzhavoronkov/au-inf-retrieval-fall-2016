@@ -3,6 +3,7 @@ import os
 import sqlite3
 import sys
 import time
+import pickle
 from urllib.request import urlopen
 
 # Global vars
@@ -10,76 +11,33 @@ db = None
 conn = None
 crawl_order = []
 max_top_track_pages = 10
-SLEEP_BETWEEN_TOPTRACKS = 5  # seconds
+max_friends_pages = 10
+SLEEP_BETWEEN_TOPTRACKS = 1  # seconds
 SLEEP_BETWEEN_FRIENDS = 5  # seconds
-SLEEP_BETWEEN_USERS = 10  # seconds
+SLEEP_BETWEEN_USERS = 2  # seconds
+
+user_queue = []
 
 
-def do_crawl(user_queue: list, sqlite_conn):
+def do_crawl(user_queue, sqlite_conn):
     while len(user_queue) > 0:
         current_user = user_queue.pop(0)
-        print("Finding user {0}".format(current_user))
-        is_user_new, user_id = write_or_find_user(current_user, sqlite_conn)
-        if not is_user_new:
-            print("User found< continue to the next one")
-            continue
-        print("User {0} got id {1}".format(current_user, user_id))
-
-        crawl_user_tracks(current_user, user_id, sqlite_conn)
-        crawl_user_liked_tracks(current_user, user_id, sqlite_conn)
-
-        user_queue += get_user_friends(current_user)
-
+        print("Crawling user {0}".format(current_user))
+        crawl_user(current_user, sqlite_conn)
+        #user_queue += get_user_friends(current_user)
+        pickle.dump(user_queue, open('../data/users_queue2.dat', 'wb'))
+        print("User queue dumped on disk. Length - {0}".format(len(user_queue)))
         print("Pausing before next user. You can interrupt crawling now.")
         time.sleep(SLEEP_BETWEEN_USERS)
         print("Proceeding to the next user.")
 
 
-def write_or_find_user(username, conn):
-    c = conn.cursor()
-    c.execute("SELECT * FROM USERS WHERE NAME=?", (username,))
-    if c.rowcount > 0:
-        return False, 0
-    c.execute("INSERT INTO USERS (NAME) VALUES (?)", (username,))
-    user_id = c.lastrowid
-    conn.commit()
-    return True, user_id
-
-
-def crawl_user_tracks(username, user_id, conn):
-    top_tracks = get_user_top_tracks(username)
-    write_tracks(top_tracks, conn)
-
-
-def crawl_user_liked_tracks(username, user_id, conn):
+def crawl_user(username, conn):
     liked_tracks = get_user_liked_tracks(username)
-    write_liked_tracks_to_user(liked_tracks, user_id, conn)
-
-
-def get_number_of_user_top_tracks(username):
-    total_tracks_url = get_url("user.gettoptracks", username)
-    print("Getting user's {0} number of tracks".format(username))
-    data = urlopen(total_tracks_url).read().decode("utf-8")
-    result = json.loads(data)["toptracks"]["@attr"]["total"]
-    print("User {0} has {1} tracks total".format(username, result))
-    return result
-
-
-def get_user_top_tracks(username):
-    tracks = []
-    user_tracks_count = get_number_of_user_top_tracks(username)
-
-    print("Getting 10% of top tracks of user {0} ".format(username))
-    top_tracks_url = get_url("user.gettoptracks", username, "&limit={0}".format(min((int)(user_tracks_count) // 10 + 1, 5000)))
-    data = urlopen(top_tracks_url).read().decode("utf-8")
-    result = json.loads(data)
-    for track in result["toptracks"]["track"]:
-        tracks.append({
-            "name": track["name"],
-            # "mbid": track["mbid"]
-        })
-    time.sleep(SLEEP_BETWEEN_TOPTRACKS)
-    return tracks
+    write_artists(liked_tracks, conn)
+    write_tracks(liked_tracks, conn)
+    write_user(username, conn)
+    write_liked_tracks_to_user(liked_tracks, username, conn)
 
 
 def get_user_liked_tracks(username):
@@ -92,7 +50,7 @@ def get_user_liked_tracks(username):
         for track in result["lovedtracks"]["track"]:
             liked.append({
                 "name": track["name"],
-                # "mbid": track["mbid"]
+                "artist": track["artist"]
             })
         if int(result["lovedtracks"]["@attr"]["totalPages"]) == i + 1:
             break
@@ -102,40 +60,74 @@ def get_user_liked_tracks(username):
 
 def write_tracks(tracks, conn):
     c = conn.cursor()
-    c.executemany("INSERT INTO TRACKS (NAME) VALUES (:name)", tracks)
+    for entry in tracks:
+        track = entry["name"]
+        artist_name = entry["artist"]["name"]
+        artist_id = get_artist_id(artist_name, conn)
+        c.execute("INSERT INTO TRACKS(NAME, ARTISTID) VALUES (?, ?)", (track, artist_id))
+        conn.commit()
+
+
+def write_artists(tracks_artists, conn):
+    c = conn.cursor()
+    for entry in tracks_artists:
+        artist = entry["artist"]["name"]
+        c.execute("INSERT INTO ARTISTS(NAME) VALUES (?)", (artist,))
+        conn.commit()
+
+
+def write_user(username, conn):
+    c = conn.cursor()
+    c.execute("INSERT INTO USERS(NAME) VALUES  (?)", (username,))
     conn.commit()
 
 
-def write_liked_tracks_to_user(tracks, user_id, conn):
+def write_liked_tracks_to_user(tracks_data, username, conn):
     c = conn.cursor()
-    for track in tracks:
-        c.execute("SELECT ID FROM TRACKS WHERE NAME=?", (track["name"],))
-        for row in c.fetchall():
-            track_id = row[0]
-            c.execute("INSERT INTO LIKEDTRACK2USER(USERID, TRACKID) VALUES (?, ?)", (user_id, track_id))
-            conn.commit()
+    for track in tracks_data:
+        trackname = track["name"]
+        artist_name = track["artist"]["name"]
+        trackid = get_track_id(trackname, artist_name, conn)
+        userid = get_user_id(username, conn)
+        c.execute("INSERT INTO LIKEDTRACK2USER(USERID, TRACKID) VALUES(?, ?)", (userid, trackid))
+        conn.commit()
 
 
-def get_user_friends(user):
-    i = 1
-    result = []
-    while True:
-        print("Getting friends of {0}, page {1}".format(user, i))
-        friends_url = get_url("user.getFriends", user)
+
+def get_artist_id(name, conn):
+    c = conn.cursor()
+    c.execute("SELECT ID FROM ARTISTS WHERE NAME=?", (name,))
+    for row in c.fetchall():
+        return row[0]
+
+def get_track_id(name, artist_name, conn):
+    c = conn.cursor()
+    artist_id = get_artist_id(artist_name, conn)
+    c.execute("SELECT ID FROM TRACKS WHERE NAME=? AND ARTISTID=?", (name, artist_id))
+    for row in c.fetchall():
+        return row[0]
+
+def get_user_id(name, conn):
+    c = conn.cursor()
+    c.execute("SELECT ID FROM USERS WHERE NAME=?", (name,))
+    for row in c.fetchall():
+        return row[0]
+
+
+def get_user_friends(username):
+    friends = []
+    for i in range(max_friends_pages):
+        print("Getting friends of {0}, page {1}".format(username, i))
+        friends_url = get_url("user.getfriends", username)
         data = urlopen(friends_url).read().decode("utf-8")
-        data_obj = json.loads(data)
-        if "friends" in data_obj:
-            for user in data_obj["friends"]["user"]:
-                if "name" in user:
-                    result.append(user["name"])
-            if int(data_obj["friends"]["@attr"]["totalPages"]) < i:
-                i += 1
-                time.sleep(SLEEP_BETWEEN_FRIENDS)
-            else:
-                break
-        else:
+        result = json.loads(data)
+        for user in result["friends"]["user"]:
+            if "name" in user:
+                friends.append(user["name"])
+        if int(result["friends"]["@attr"]["totalPages"]) == i + 1:
             break
-    return result
+        time.sleep(SLEEP_BETWEEN_FRIENDS)
+    return friends
 
 
 def get_url(cmd, login, params=""):
@@ -158,19 +150,41 @@ def initialize_db(filename):
     tables_init_needed = not os.path.exists(filename)
     conn = sqlite3.connect(filename)
     if tables_init_needed:
-        conn.execute('''CREATE TABLE USERS (ID INTEGER PRIMARY KEY AUTOINCREMENT, NAME TEXT NOT NULL)''')
+        conn.execute('''CREATE TABLE USERS (
+                        ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                        NAME TEXT NOT NULL)''')
 
-        conn.execute('''CREATE TABLE TRACKS (ID INTEGER PRIMARY KEY AUTOINCREMENT, NAME TEXT UNIQUE ON CONFLICT IGNORE NOT NULL)''')
+        conn.execute('''CREATE TABLE ARTISTS (
+                        ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                        NAME TEXT NOT NULL,
+                        UNIQUE (NAME) ON CONFLICT IGNORE)''')
 
-        conn.execute('''CREATE TABLE LIKEDTRACK2USER (USERID INT NOT NULL, TRACKID INT NOT NULL,
-        FOREIGN KEY(USERID) REFERENCES USERS(ID), FOREIGN KEY(TRACKID) REFERENCES TRACKS(ID))''')
+        conn.execute('''CREATE TABLE LIKEDTRACK2USER (
+                        USERID TEXT NOT NULL,
+                        TRACKID TEXT NOT NULL,
+                        UNIQUE (USERID, TRACKID) ON CONFLICT IGNORE)''')
+
+        conn.execute('''CREATE TABLE TRACKS (
+                        ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                        NAME TEXT NOT NULL,
+                        ARTISTID INTEGER,
+                        FOREIGN KEY(ARTISTID) REFERENCES ARTISTS(ID))''')
 
     return conn
 
 
+def initialize_queue(filename):
+    if not os.path.exists(filename):
+        return ['rj']
+    else:
+        return pickle.load(open(filename, 'rb'))
+
+# For debug - get all liked tracks of user by name
+# SELECT ARTISTS.NAME, t.NAME FROM ARTISTS JOIN (SELECT NAME, ARTISTID FROM TRACKS JOIN (SELECT TRACKID from LIKEDTRACK2USER JOIN USERS ON USERID=USERS.ID WHERE NAME='EdgarSeal') ON TRACKS.ID = TRACKID) as t ON ARTISTS.ID=ARTISTID
+
 if __name__ == "__main__":
-    # main()
-    global conn
-    conn = initialize_db("onlyTracks.sqlite")
-    do_crawl(["EdgarSeal"], conn)
+    global conn, user_queue
+    user_queue = initialize_queue('../data/users_queue2.dat')
+    conn = initialize_db("../data/data.sqlite")
+    do_crawl(user_queue, conn)
     conn.close()
