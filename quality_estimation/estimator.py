@@ -1,104 +1,178 @@
-import csv
-import math
-import random
-from sparsesvd import sparsesvd
+import os
+import pickle
+import sqlite3
+import sys
 
 import numpy as np
-from scipy.sparse import csr_matrix, csc_matrix
+from scipy.sparse import csr_matrix
+from sklearn.metrics import pairwise_distances
+from sklearn.cross_validation import train_test_split
+
+conn = sqlite3.connect('../data/data.sqlite')
 
 
-MAX_TRACKID = 320495
-MAX_USERID = 1517
+def get_max_uid(conn):
+    c = conn.cursor()
+    c.execute("SELECT COUNT(ID) FROM USERS")
+    for row in c.fetchall():
+        return row[0]
 
-test_set_size = int(0.2 * MAX_TRACKID)
-train_set_size = MAX_TRACKID - test_set_size
-test_indices = set(random.sample(range(MAX_TRACKID), test_set_size))
-
-
-def read_users(filename):
-    users = [''] * MAX_USERID
-    with open(filename, 'r', encoding='utf-8') as users_file:
-        users_reader = csv.reader(users_file, delimiter=';')
-        for row in users_reader:
-            users[int(row[0])] = row[1]
-    return users
+def get_max_trackid(conn):
+    c = conn.cursor()
+    c.execute("SELECT COUNT(ID) FROM TRACKS")
+    for row in c.fetchall():
+        return row[0]
 
 
-def read_tracks(filename):
-    tracks = [''] * MAX_TRACKID
-    with open(filename, 'r', encoding='utf-8') as tracks_file:
-        tracks_reader = csv.reader(tracks_file, delimiter=';')
-        for row in tracks_reader:
-            tracks[int(row[0])] = row[1]
-    return tracks
+MAX_TRACKID = get_max_trackid(conn) + 1
+MAX_USERID = get_max_uid(conn) + 1
 
 
-def read_urm(filename):
-    urm = np.zeros(shape=(MAX_USERID, MAX_TRACKID), dtype=np.float32)
-    with open(filename, 'r', encoding='utf-8') as dataset_file:
-        urm_reader = csv.reader(dataset_file, delimiter=';')
-        for row in urm_reader:
-            urm[int(row[0]), int(row[1])] = float(1.0)
-    return csc_matrix(urm, dtype=np.float32)
-
-
-def read_prepared_data(filename):
-    urm = np.zeros(shape=(MAX_USERID, MAX_TRACKID), dtype=np.float32)
-    with open(filename, 'r', encoding='utf-8') as dataset_file:
-        urm_reader = csv.reader(dataset_file, delimiter=';')
-        for row in urm_reader:
-            if not int(row[1]) in test_indices:
-                urm[int(row[0]), int(row[1])] = float(1.0)
-    return csc_matrix(urm, dtype=np.float32)
-
-
-def read_data():
-    data = read_urm('../data/urm.csv')
-    tracks = read_tracks('../data/trackname2Id.csv')
-    users = read_users('../data/username2Id.csv')
+def read_data(conn):
+    data = read_urm(conn)
+    tracks = read_tracks(conn)
+    users = read_users(conn)
     return users, tracks, data
 
 
-def estimate_rates(users, data, username):
-    K = 90
-    if username not in users:
-        print("No such user in dataframe")
-        return
-
-    user_index = users.index(username)
-
-    U, s, Vt = sparsesvd(data, K)
-
-    dim = (len(s), len(s))
-    S = np.zeros(dim, dtype=np.float32)
-    for i in range(0, len(s)):
-        S[i, i] = math.sqrt(s[i])
-
-    U = csc_matrix(np.transpose(U), dtype=np.float32)
-    S = csc_matrix(S, dtype=np.float32)
-    Vt = csc_matrix(Vt, dtype=np.float32)
-
-    rightTerm = S * Vt
-
-    prod = U[user_index, :] * rightTerm
-
-    return prod.todense()
+def read_users(conn):
+    users = [''] * MAX_USERID
+    c = conn.cursor()
+    c.execute("SELECT ID, NAME FROM USERS")
+    for row in c.fetchall():
+        users[int(row[0])] = row[1]
+    return users
 
 
-def compute_error(estimated, actual):
-    pass
+def read_tracks(conn):
+    tracks = [''] * MAX_TRACKID
+    c = conn.cursor()
+    c.execute("SELECT ID, NAME FROM TRACKS")
+    for row in c.fetchall():
+        tracks[int(row[0])] = row[1]
+    return tracks
+
+
+def read_urm(conn):
+    c = conn.cursor()
+    urm = np.zeros(shape=(MAX_USERID, MAX_TRACKID), dtype=np.double)
+    test_sets = [[]] * MAX_USERID
+
+    for i in range(1, MAX_USERID):
+        total = []
+        c.execute("SELECT TRACKID FROM LIKEDTRACK2USER WHERE USERID=?", (str(i), ))
+        for row in c.fetchall():
+            total.append(row[0])
+        train, test = train_test_split(total, train_size=0.8)
+        test_sets[i] = test
+        for idx in train:
+            urm[int(i), int(idx)] = 1.0
+    return test_sets,  csr_matrix(urm, dtype=np.double)
+
+
+def init_dist_if_need(data, filename):
+    if not os.path.exists(filename):
+        dist = pairwise_distances(data, metric='cosine')
+        pickle.dump(dist, open('../data/dist.dat', 'wb'))
+        return dist
+    else:
+        return pickle.load(open(filename, 'rb'))
+
+
+def get_user_id(name, conn):
+    c = conn.cursor()
+    c.execute("SELECT ID FROM USERS WHERE NAME=?", (name,))
+    for row in c.fetchall():
+        return row[0]
+
+
+def get_track_name(tid, conn):
+    c = conn.cursor()
+    c.execute("SELECT NAME FROM TRACKS WHERE ID=?", (int(tid),))
+    for row in c.fetchall():
+        return row[0]
+
+
+def get_similar_users_ids(dist, user_id, count, conn):
+    dists = dist[user_id,  : ]
+    sorted = np.argsort(dists)
+    res = []
+    for i in range(count + 1):
+        uid = sorted[i]
+        if (uid != user_id):
+            res.append(uid)
+    return res
+
+
+def get_liked_tracks_ids(user_id, conn):
+    c = conn.cursor()
+    c.execute("SELECT TRACKID from LIKEDTRACK2USER JOIN USERS ON USERID=USERS.ID WHERE ID=?", (str(user_id),))
+    res = []
+    for row in c.fetchall():
+        res.append(int(row[0]))
+    return res
+
+
+def get_frequencies(similar_users_ids, conn):
+    res = [0] * MAX_TRACKID
+    for uid in similar_users_ids:
+        liked_tracks = get_liked_tracks_ids(uid, conn)
+        for trackid in liked_tracks:
+            res[int(trackid)] += 1
+    return res
+
+
+def get_artist_name(track_id, conn):
+    c = conn.cursor()
+    c.execute("SELECT ARTISTS.NAME FROM ARTISTS JOIN TRACKS ON ARTISTS.ID = TRACKS.ARTISTID WHERE TRACKS.ID=?", (int(track_id),))
+    for row in c.fetchall():
+        return row[0]
+
+
+def recommend(user_id, data):
+
+    dist = init_dist_if_need(data, '../data/dist.dat')
+
+    liked_tracks_ids = get_liked_tracks_ids(user_id, conn)
+    similar_users_ids = get_similar_users_ids(dist, user_id, 100, conn)
+    frequencies = get_frequencies(similar_users_ids, conn)
+
+    for track_id in liked_tracks_ids:
+        frequencies[track_id] = 0
+
+    res_ids = np.argsort(frequencies)[0: 250]
+    res_set = []
+    for res_id in res_ids:
+        if (res_id != 0):
+            artist_name = get_artist_name(res_id, conn)
+            track_name = get_track_name(res_id, conn)
+            res_set.append(artist_name + " - " + track_name)
+    return res_set
+
+
+def get_test_set(test_ids, conn):
+    res = []
+    for tid in test_ids:
+        track_name = get_track_name(tid, conn)
+        artist_name = get_artist_name(tid, conn)
+        res.append(artist_name + " - " + track_name)
+    return res
 
 
 if __name__ == '__main__':
-    users, songs, data = read_data()
-    prepared_data = read_prepared_data('../data/urm.csv')
-    res = []
-    for i in range(len(users)):
-        user = users[i]
-        estimated_ratings = estimate_rates(users, prepared_data, user)
-        error = compute_error(estimated_ratings, data[i, :])
-        pass
-        # get estimated ratings
-        # compute error
-        # append to result
-    # save result to file
+    global conn
+    test_sets, urm = read_urm(conn)
+    fs = [0] * MAX_USERID
+    for i in range(1, MAX_USERID):
+        res_set = set(recommend(i, urm))
+        test_set = set(get_test_set(test_sets[i], conn))
+
+        precision = len(res_set.intersection(test_set)) / len(test_set)
+        recall = len(res_set.intersection(test_set)) / len(res_set)
+
+        if precision != 0 and recall != 0:
+            f = (2 * recall * precision) / (recall + precision)
+        else:
+            f = 0
+        fs[i] = f
+    print(np.mean(fs))
