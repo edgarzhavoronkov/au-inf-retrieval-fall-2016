@@ -95,7 +95,7 @@ def get_track_name(tid, conn):
 
 def get_similar_users_ids(dist, user_id, count, conn):
     dists = dist[user_id,  : ]
-    sorted = np.argsort(dists)
+    sorted = np.flipud(np.argsort(dists))
     res = []
     for i in range(count + 1):
         uid = sorted[i]
@@ -134,13 +134,13 @@ def recommend(user_id, data):
     dist = init_dist_if_need(data, '../data/dist.dat')
 
     liked_tracks_ids = get_liked_tracks_ids(user_id, conn)
-    similar_users_ids = get_similar_users_ids(dist, user_id, 100, conn)
+    similar_users_ids = get_similar_users_ids(dist, user_id, 150, conn)
     frequencies = get_frequencies(similar_users_ids, conn)
 
     for track_id in liked_tracks_ids:
         frequencies[track_id] = 0
 
-    res_ids = np.argsort(frequencies)[0: 250]
+    res_ids = np.flipud(np.argsort(frequencies))[0: 250]
     res_set = []
     for res_id in res_ids:
         if (res_id != 0):

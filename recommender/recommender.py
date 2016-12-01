@@ -93,7 +93,7 @@ def get_track_name(tid, conn):
 
 def get_similar_users_ids(dist, user_id, count, conn):
     dists = dist[user_id,  : ]
-    sorted = np.argsort(dists)
+    sorted = np.flipud(np.argsort(dists))
     res = []
     for i in range(count + 1):
         uid = sorted[i]
@@ -136,13 +136,13 @@ if __name__ == '__main__':
 
     user_id = get_user_id(username, conn)
     liked_tracks_ids = get_liked_tracks_ids(user_id, conn)
-    similar_users_ids = get_similar_users_ids(dist, user_id, 100, conn)
+    similar_users_ids = get_similar_users_ids(dist, user_id, 150, conn)
     frequencies = get_frequencies(similar_users_ids, conn)
 
     for track_id in liked_tracks_ids:
         frequencies[track_id] = 0
 
-    res_ids = np.argsort(frequencies)[0 : 10]
+    res_ids = np.flipud(np.argsort(frequencies))[0 : 250]
     for res_id in res_ids:
         if (res_id != 0):
             artist_name = get_artist_name(res_id, conn)
