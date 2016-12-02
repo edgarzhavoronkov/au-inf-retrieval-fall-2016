@@ -51,13 +51,20 @@ def get_neighbors(center_idx, similarities, urm, nbr_size):
     return urm[nbrs]
 
 
-def top_n(vectors, n):
-    return np.bincount(vectors.nonzero()[1]).argsort()[::-1][:n]
+def top_n(vectors, n, user_items):
+    recs = np.bincount(vectors.nonzero()[1]).argsort()[::-1]
+    result = []
+    for rec in recs:
+        if rec not in user_items:
+            result.append(rec)
+        if len(result) >= n:
+            break
+    return result if len(result) <= n else result[:n]
 
 
 def recommend_user_raw(user_idx, similarities, urm, nbr_size, N):
     nbr_vectors = get_neighbors(user_idx, similarities, urm, nbr_size)
-    return top_n(nbr_vectors, N)
+    return top_n(nbr_vectors, N, set(urm[user_idx].nonzero()[1]))
 
 
 def read_sets(filename, train_ratio):
@@ -87,25 +94,42 @@ def f1(recs, test):
         return 0.0
     return 2 * precision * recall / (precision + recall)
 
-def run_test(nbr_size, N):
-    train, test = read_sets("../data/urm.csv", 0.8)
+def run_test(nbr_size):
+    train, test = read_sets("../data/urm.csv", 0.6)
     sims = cosine_similarities(train)
     sum_f1 = 0.0
+    overall = 0
     for i in range(MAX_USERID):
-        usr_recommendations = recommend_user_raw(i, sims, train, nbr_size, N)
-        sum_f1 += f1(usr_recommendations, test[i].nonzero()[1])
-    print(sum_f1 / MAX_USERID)
+        test_recs = test[i].nonzero()[1]
+        local_N = len(test_recs)
+        if local_N == 0:
+            continue
+        usr_recommendations = recommend_user_raw(i, sims, train, nbr_size, local_N)
+        sum_f1 += f1(usr_recommendations, test_recs)
+        overall += 1
+    print(sum_f1 / overall)
+
+def learn_nbrs_size(start, end, step):
+    for nbrs_size in range(start, end, step):
+        print("nbrs: " + str(nbrs_size))
+        print("F1: ")
+        run_test(nbrs_size)
 
 def get_single_recommendation(username):
     urm = readURM()
     users = readUsers()
     tracks = readTracks()
+    user_idx = users.index(username)
+    sims = cosine_similarities(urm)
+    recs = recommend_user_raw(user_idx, sims, urm, 70, 10)
+    return [tracks[rec] for rec in recs]
 
 if __name__ == '__main__':
     if (argv[1] == "test"):
-        run_test(int(argv[2]), int(argv[3]))
+        run_test(int(argv[2]))
+        # learn_nbrs_size(65, 140, 5) - 70 is optimal (3.2%)
     else:
-        get_single_recommendation(argv[0])
+        print(get_single_recommendation(argv[1]))
 
 
 
