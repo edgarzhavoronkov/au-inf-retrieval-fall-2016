@@ -171,7 +171,9 @@ def plot_single_ratio(train_ratio, nbr_sizes):
         average = average_metrics(train, test, sims, nbr_size)
         prs.append(average["pr"])
         rcs.append(average["rc"])
-    plt.plot(nbr_sizes, prs, "g-", nbr_sizes, rcs, "r-")
+    plt.plot(nbr_sizes, prs, "g-")
+    plt.plot(nbr_sizes, rcs, "r-")
+    plt.legend(['precision', 'recall'], loc='upper left')
     plt.title("Train ratio: " + str(train_ratio))
     plt.show()
 
