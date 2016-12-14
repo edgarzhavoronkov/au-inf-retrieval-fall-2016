@@ -11,6 +11,21 @@ from sklearn.cross_validation import train_test_split
 conn = sqlite3.connect('../data/data.sqlite')
 
 
+def jaccard_similarities(mat):
+    cols_sum = mat.getnnz(axis=0)
+    ab = mat.T * mat
+
+    # for rows
+    aa = np.repeat(cols_sum, ab.getnnz(axis=0))
+    # for columns
+    bb = cols_sum[ab.indices]
+
+    similarities = ab.copy()
+    similarities.data /= (aa + bb - ab.data)
+
+    return similarities
+
+
 def get_max_uid(conn):
     c = conn.cursor()
     c.execute("SELECT COUNT(ID) FROM USERS")
@@ -63,7 +78,7 @@ def read_urm(conn):
         c.execute("SELECT TRACKID FROM LIKEDTRACK2USER WHERE USERID=?", (str(i), ))
         for row in c.fetchall():
             total.append(row[0])
-        train, test = train_test_split(total, train_size=0.8)
+        train, test = train_test_split(total, train_size=0.6)
         test_sets[i] = test
         for idx in train:
             urm[int(i), int(idx)] = 1.0
@@ -94,8 +109,8 @@ def get_track_name(tid, conn):
 
 
 def get_similar_users_ids(dist, user_id, count, conn):
-    dists = dist[user_id,  : ]
-    sorted = np.flipud(np.argsort(dists))
+    dists = dist[user_id,  : ].toarray()[0]
+    sorted = np.flipud(np.argsort(dists.data))
     res = []
     for i in range(count + 1):
         uid = sorted[i]
@@ -130,11 +145,10 @@ def get_artist_name(track_id, conn):
 
 
 def recommend(user_id, data):
-
-    dist = init_dist_if_need(data, '../data/dist.dat')
+    dist = jaccard_similarities(data.transpose().tocsc())
 
     liked_tracks_ids = get_liked_tracks_ids(user_id, conn)
-    similar_users_ids = get_similar_users_ids(dist, user_id, 150, conn)
+    similar_users_ids = get_similar_users_ids(dist, user_id, 70, conn)
     frequencies = get_frequencies(similar_users_ids, conn)
 
     for track_id in liked_tracks_ids:
