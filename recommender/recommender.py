@@ -1,11 +1,7 @@
-import os
-import pickle
 import sqlite3
-import sys
 
 import numpy as np
-from scipy.sparse import csc_matrix
-from sklearn.metrics import pairwise_distances
+from scipy.sparse import csr_matrix
 
 conn = sqlite3.connect('../data/data.sqlite')
 
@@ -100,7 +96,7 @@ def read_urm(conn):
     c.execute("SELECT * FROM LIKEDTRACK2USER")
     for row in c.fetchall():
         urm[int(row[0]), int(row[1])] = 1.0
-    return csc_matrix(urm, dtype=np.double)
+    return csr_matrix(urm, dtype=np.double)
 
 
 def get_user_id(name, conn):
@@ -168,7 +164,7 @@ def get_artist_name(track_id, conn):
 
 def recommend_by_user(username, conn):
     users, tracks, data = read_data(conn)
-    dist = jaccard_similarities(data.transpose(True))
+    dist = jaccard_similarities(data.transpose(True).tocsc())
 
     user_id = get_user_id(username, conn)
     liked_tracks_ids = get_liked_tracks_ids(user_id, conn)
