@@ -181,12 +181,17 @@ if __name__ == '__main__':
         res_set = set(recommend(i, urm))
         test_set = set(get_test_set(test_sets[i], conn))
 
-        precision = len(res_set.intersection(test_set)) / len(test_set)
-        recall = len(res_set.intersection(test_set)) / len(res_set)
+        precision = 0
+        recall = 0
 
+        if len(res_set) != 0 and len(test_set) != 0:
+            precision = len(res_set.intersection(test_set)) / len(test_set)
+            recall = len(res_set.intersection(test_set)) / len(res_set)
+
+        f = 0
         if precision != 0 and recall != 0:
             f = (2 * recall * precision) / (recall + precision)
-        else:
-            f = 0
+
         fs[i] = f
+        print("Handled id {0}".format(i))
     print(np.mean(fs))
