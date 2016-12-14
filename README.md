@@ -12,3 +12,4 @@ It launches in REPL mode, so you can type in following commands:
 * `recommend` - recommends you ten songs, based on your likes. If you hadn't liked anything yet - you will be given ten the most popular songs. Similarly, if you aren't signed in, you will be given top ten songs.
 * `tracks <artist_name>` - prints all tracks of given artist
 * `liked` - prints all tracks you liked if you are signed in
+* `exit` - to exit
