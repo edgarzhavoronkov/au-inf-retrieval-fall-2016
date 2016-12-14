@@ -4,12 +4,26 @@ import sqlite3
 import sys
 
 import numpy as np
-from scipy.sparse import csr_matrix
+from scipy.sparse import csc_matrix
 from sklearn.metrics import pairwise_distances
 
 conn = sqlite3.connect('../data/data.sqlite')
 
 current_user = None
+
+def jaccard_similarities(mat):
+    cols_sum = mat.getnnz(axis=0)
+    ab = mat.T * mat
+
+    # for rows
+    aa = np.repeat(cols_sum, ab.getnnz(axis=0))
+    # for columns
+    bb = cols_sum[ab.indices]
+
+    similarities = ab.copy()
+    similarities.data /= (aa + bb - ab.data)
+
+    return similarities
 
 def is_user_present(username, conn):
     c = conn.cursor()
@@ -86,16 +100,7 @@ def read_urm(conn):
     c.execute("SELECT * FROM LIKEDTRACK2USER")
     for row in c.fetchall():
         urm[int(row[0]), int(row[1])] = 1.0
-    return csr_matrix(urm, dtype=np.double)
-
-
-def init_dist_if_need(data, filename):
-    if not os.path.exists(filename):
-        dist = pairwise_distances(data, metric='cosine')
-        pickle.dump(dist, open('../data/dist.dat', 'wb'))
-        return dist
-    else:
-        return pickle.load(open(filename, 'rb'))
+    return csc_matrix(urm, dtype=np.double)
 
 
 def get_user_id(name, conn):
@@ -120,8 +125,8 @@ def get_track_name(tid, conn):
 
 
 def get_similar_users_ids(dist, user_id, count, conn):
-    dists = dist[user_id,  : ]
-    sorted = np.flipud(np.argsort(dists))
+    dists = dist[user_id,  : ].toarray()[0]
+    sorted = np.flipud(np.argsort(dists.data))
     res = []
     for i in range(count + 1):
         uid = sorted[i]
@@ -142,12 +147,12 @@ def get_liked_tracks_ids(user_id, conn):
     return res
 
 
-def get_frequencies(similar_users_ids, conn):
+def get_frequencies(dist, user_id, similar_users_ids, conn):
     res = [0] * MAX_TRACKID
     for uid in similar_users_ids:
         liked_tracks = get_liked_tracks_ids(uid, conn)
         for trackid in liked_tracks:
-            res[int(trackid)] += 1
+            res[int(trackid)] += dist[user_id, uid]
     return res
 
 
@@ -163,7 +168,7 @@ def get_artist_name(track_id, conn):
 
 def recommend_by_user(username, conn):
     users, tracks, data = read_data(conn)
-    dist = init_dist_if_need(data, '../data/dist.dat')
+    dist = jaccard_similarities(data.transpose(True))
 
     user_id = get_user_id(username, conn)
     liked_tracks_ids = get_liked_tracks_ids(user_id, conn)
@@ -172,17 +177,17 @@ def recommend_by_user(username, conn):
         recommend_most_popular(conn)
     else:
         similar_users_ids = get_similar_users_ids(dist, user_id, 150, conn)
-        frequencies = get_frequencies(similar_users_ids, conn)
+        frequencies = get_frequencies(dist, user_id, similar_users_ids, conn)
 
         for track_id in liked_tracks_ids:
             frequencies[track_id] = 0
 
-        res_ids = np.flipud(np.argsort(frequencies))[0 : 250]
+        res_ids = np.flipud(np.argsort(frequencies))[0 : 10]
         for res_id in res_ids:
             if (res_id != 0):
                 artist_name = get_artist_name(res_id, conn)
                 track_name = get_track_name(res_id, conn)
-                print(artist_name + " - " + track_name)
+                print(artist_name + " - " + track_name + " (" + str(frequencies[res_id]) + ") ")
 
 
 def recommend_most_popular(conn):
@@ -220,13 +225,20 @@ if __name__ == '__main__':
                 print("User {0} already present, select another name".format(username))
             else:
                 signup(username, conn)
+                print("Signed up as {0}".format(username))
+        elif user_input[0] == "signin":
+            username = user_input[1]
+            if is_user_present(username, conn):
+                current_user = username
                 print("Logged in as {0}".format(username))
+            else:
+                print("User {0) is not present".format(username))
         elif user_input[0] == "like":
             if current_user is None:
                 print("Sign up to like first!")
             else:
-                artist = user_input[1]
-                track = " ".join(user_input[2 : ])
+                artist = input("\tArtist: ")
+                track = input("\tTrack: ")
                 like(current_user, artist, track, conn)
 
         elif user_input[0] == "tracks":
@@ -239,9 +251,20 @@ if __name__ == '__main__':
             else:
                 recommend_by_user(current_user, conn)
 
+        elif user_input[0] == "liked":
+            if current_user is None:
+                print("Sign up or sign in to get liked tracks first!")
+            else:
+                user_id = get_user_id(current_user, conn)
+                liked_tracks_ids = get_liked_tracks_ids(user_id, conn)
+                for res_id in liked_tracks_ids:
+                    if (res_id != 0):
+                        artist_name = get_artist_name(res_id, conn)
+                        track_name = get_track_name(res_id, conn)
+                        print(artist_name + " - " + track_name)
+
         elif user_input[0] == "exit":
             break
 
         else:
-            pass
-        
+            print("Unknown command! Please, try again")
