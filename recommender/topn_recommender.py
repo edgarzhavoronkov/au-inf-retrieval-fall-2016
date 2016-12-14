@@ -6,6 +6,7 @@ import csv
 from sparsesvd import sparsesvd
 from scipy.sparse import csr_matrix, csc_matrix
 from sklearn.metrics.pairwise import cosine_similarity
+import sklearn.preprocessing as pp
 from random import random
 from sys import float_info
 from matplotlib import pyplot as plt
@@ -42,14 +43,15 @@ def readURM():
     return csc_matrix(urm, dtype=np.float32)
 
 
-def cosine_similarities(urm):
-    return cosine_similarity(urm)
+# def cosine_similarities(urm):
+#     return cosine_similarity(urm)
 
 
 def get_neighbors(center_idx, similarities, urm, nbr_size):
-    most_similar = similarities[center_idx].argsort()[::-1]
+    all_neighbors = similarities[center_idx].toarray()[0]
+    most_similar = all_neighbors.argsort()[::-1]
     nbrs = most_similar[most_similar != center_idx][:nbr_size]
-    values = similarities[center_idx][nbrs]
+    values = all_neighbors[nbrs]
     return urm[nbrs], values
 
 
@@ -66,32 +68,11 @@ def top_n(vectors, vec_weights, n, user_items):
             break
     return filtered if len(filtered) <= n else filtered[:n]
 
-def top_n_both(vectors, vec_weights, n, user_items):
-    result = np.zeros(shape=(MAX_TRACKID,))
-    for nbr, weight in zip(vectors, vec_weights):
-        result += nbr * weight
-    result = result.argsort().tolist()[0][::-1]
-    # recs = np.bincount(vectors.nonzero()[1]).argsort()[::-1]
-    filtered = []
-    for rec in result:
-        if rec not in user_items:
-            filtered.append(rec)
-        if len(filtered) >= n:
-            break
-    return filtered if len(filtered) <= n else filtered[:n]
-
 
 def recommend_user_raw(user_idx, similarities, urm, nbr_size, N, equiv_weights = False):
     nbr_indices, nbr_dists = get_neighbors(user_idx, similarities, urm, nbr_size)
     return top_n(nbr_indices,
                  nbr_dists if not equiv_weights else np.ones(shape=nbr_dists.shape),
-                 N,
-                 set(urm[user_idx].nonzero()[1]))
-
-def recommend_user_raw_both(user_idx, similarities, urm, nbr_size, N):
-    nbr_indices, nbr_dists = get_neighbors(user_idx, similarities, urm, nbr_size)
-    return top_n_both(nbr_indices,
-                 nbr_dists,
                  N,
                  set(urm[user_idx].nonzero()[1]))
 
@@ -108,6 +89,24 @@ def read_sets(filename, train_ratio):
                 test_data[int(row[0]), int(row[1])] = float(1.0)
     return csc_matrix(urm, dtype=np.float32), csc_matrix(test_data, dtype=np.float32)
 
+def cosine_similarities(mat):
+    col_normed_mat = pp.normalize(mat, axis=1)
+    return col_normed_mat * col_normed_mat.T
+
+def jaccard_similarities(mat):
+    rows_sum = mat.getnnz(axis=1)
+    ab = mat * mat.T
+
+    # for rows
+    aa = np.repeat(rows_sum, ab.getnnz(axis=1))
+    # for columns
+    bb = rows_sum[ab.indices]
+
+    similarities = ab.copy()
+    similarities.data /= (aa + bb - ab.data)
+
+    return similarities
+
 
 def metrics(recs, test):
     recs_len = len(recs)
@@ -123,7 +122,7 @@ def metrics(recs, test):
         return 0.0, precision, recall
     return 2 * precision * recall / (precision + recall), precision, recall
 
-def average_metrics(train, test, sims, nbr_size):
+def average_metrics(train, test, sims, nbr_size, equal_weights=False):
     sum_f1 = 0.0
     sum_pr = 0.0
     sum_rc = 0.0
@@ -133,7 +132,7 @@ def average_metrics(train, test, sims, nbr_size):
         local_N = len(test_recs)
         if local_N == 0:
             continue
-        usr_recommendations = recommend_user_raw(i, sims, train, nbr_size, local_N)
+        usr_recommendations = recommend_user_raw(i, sims, train, nbr_size, local_N, equal_weights)
         (f1, pr, rc) = metrics(usr_recommendations, test_recs)
         sum_f1 += f1
         sum_pr += pr
@@ -143,7 +142,7 @@ def average_metrics(train, test, sims, nbr_size):
 
 def run_test(nbr_size, train_ratio=0.6):
     train, test = read_sets("../data/urm.csv", train_ratio)
-    sims = cosine_similarities(train)
+    sims = jaccard_similarities(train)
     print(average_metrics(train, test, sims, nbr_size))
 
 def learn_nbrs_size(start, end, step):
@@ -151,6 +150,7 @@ def learn_nbrs_size(start, end, step):
         print("nbrs: " + str(nbrs_size))
         print("F1: ")
         run_test(nbrs_size)
+
 
 def get_single_recommendation(username):
     urm = readURM()
@@ -164,16 +164,18 @@ def get_single_recommendation(username):
 
 def plot_single_ratio(train_ratio, nbr_sizes):
     train, test = read_sets("../data/urm.csv", train_ratio)
-    sims = cosine_similarities(train)
-    prs = []
-    rcs = []
+    sims1 = cosine_similarities(train)
+    sims2 = jaccard_similarities(train)
+    weighted = []
+    equal = []
     for nbr_size in nbr_sizes:
-        average = average_metrics(train, test, sims, nbr_size)
-        prs.append(average["pr"])
-        rcs.append(average["rc"])
-    plt.plot(nbr_sizes, prs, "g-")
-    plt.plot(nbr_sizes, rcs, "r-")
-    plt.legend(['precision', 'recall'], loc='upper left')
+        weighted_f1 = average_metrics(train, test, sims1, nbr_size)["f1"]
+        weighted.append(weighted_f1)
+        equal_f1 = average_metrics(train, test, sims2, nbr_size)["f1"]
+        equal.append(equal_f1)
+    plt.plot(nbr_sizes, weighted, "g-")
+    plt.plot(nbr_sizes, equal, "r-")
+    plt.legend(['cosine', 'jaccard'], loc='upper left')
     plt.title("Train ratio: " + str(train_ratio))
     plt.show()
 
