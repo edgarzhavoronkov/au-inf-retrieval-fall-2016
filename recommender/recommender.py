@@ -65,31 +65,6 @@ MAX_TRACKID = get_max_trackid(conn) + 1
 MAX_USERID = get_max_uid(conn) + 1
 
 
-def read_data(conn):
-    data = read_urm(conn)
-    tracks = read_tracks(conn)
-    users = read_users(conn)
-    return users, tracks, data
-
-
-def read_users(conn):
-    users = [''] * MAX_USERID
-    c = conn.cursor()
-    c.execute("SELECT ID, NAME FROM USERS")
-    for row in c.fetchall():
-        users[int(row[0])] = row[1]
-    return users
-
-
-def read_tracks(conn):
-    tracks = [''] * MAX_TRACKID
-    c = conn.cursor()
-    c.execute("SELECT ID, NAME FROM TRACKS")
-    for row in c.fetchall():
-        tracks[int(row[0])] = row[1]
-    return tracks
-
-
 def read_urm(conn):
     c = conn.cursor()
     urm = np.zeros(shape=(MAX_USERID, MAX_TRACKID), dtype=np.double)
@@ -109,7 +84,7 @@ def get_track_id(track, artist, conn):
     c = conn.cursor()
     c.execute("SELECT TRACKS.ID "
               "FROM TRACKS JOIN ARTISTS ON TRACKS.ARTISTID = ARTISTS.ID "
-              "WHERE ARTISTS.NAME=? AND TRACKS.NAME=? LIMIT 1", (artist, track))
+              "WHERE ARTISTS.NAME=? AND TRACKS.NAME=? LIMIT 1 COLLATE NOCASE", (artist, track))
     for row in c.fetchall():
         return row[0]
 
@@ -163,7 +138,7 @@ def get_artist_name(track_id, conn):
 
 
 def recommend_by_user(username, conn):
-    users, tracks, data = read_data(conn)
+    data = read_urm(conn)
     dist = jaccard_similarities(data.transpose(True).tocsc())
 
     user_id = get_user_id(username, conn)
@@ -187,7 +162,7 @@ def recommend_by_user(username, conn):
 
 
 def recommend_most_popular(conn):
-    users, tracks, data = read_data(conn)
+    data = read_urm(conn)
     data = data.tocsc()
     freqs = data.sum(0).tolist()[0]
     tops = np.flipud(np.argsort(freqs))[0:10]
@@ -204,7 +179,7 @@ def get_tracks_by_artist(artist, conn):
     c.execute("SELECT DISTINCT(TRACKS.NAME) "
               "FROM TRACKS JOIN ARTISTS "
               "ON TRACKS.ARTISTID = ARTISTS.ID "
-              "WHERE ARTISTS.NAME=?", (artist,))
+              "WHERE ARTISTS.NAME=? COLLATE NOCASE", (artist,))
     for row in c.fetchall():
         res.append(row[0])
     return res
@@ -228,7 +203,7 @@ if __name__ == '__main__':
                 current_user = username
                 print("Logged in as {0}".format(username))
             else:
-                print("User {0) is not present".format(username))
+                print("User {0}is not present".format(username))
         elif user_input[0] == "like":
             if current_user is None:
                 print("Sign up to like first!")
