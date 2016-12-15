@@ -3,8 +3,9 @@
 This is a simple CLI-based recommender engine for music. More details on wiki(in Russian)
 
 ## Running:
-To run, clone this repository and execute `python recommender/recommender.py`
-You will need data, to operate on, you can download it from here: [link](https://drive.google.com/open?id=0B2baED5e1OEQSzhUWGh1Zk94QlE)  
+To run, clone this repository and execute `python recommender/recommender.py <db_path>`  
+You will need data to operate on, you can download it from here: [link](https://drive.google.com/open?id=0B2baED5e1OEQSzhUWGh1Zk94QlE)  
+`<db_path>` is a path to database
 It launches in REPL mode, so you can type in following commands:
     
 *  `signup <user_name>` - creates new user and signs you in
