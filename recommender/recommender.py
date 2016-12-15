@@ -155,7 +155,7 @@ def recommend_by_user(username, conn):
 
         res_ids = np.flipud(np.argsort(frequencies))[0 : 10]
         for res_id in res_ids:
-            if (res_id != 0):
+            if res_id != 0:
                 artist_name = get_artist_name(res_id, conn)
                 track_name = get_track_name(res_id, conn)
                 print(artist_name + " - " + track_name + " (" + str(frequencies[res_id]) + ") ")
@@ -167,7 +167,7 @@ def recommend_most_popular(conn):
     freqs = data.sum(0).tolist()[0]
     tops = np.flipud(np.argsort(freqs))[0:10]
     for top in tops:
-        if (top != 0):
+        if top != 0:
             artist_name = get_artist_name(top, conn)
             track_name = get_track_name(top, conn)
             print(artist_name + " - " + track_name + " (" + str(freqs[top]) +")")
@@ -204,6 +204,7 @@ if __name__ == '__main__':
                 print("Logged in as {0}".format(username))
             else:
                 print("User {0}is not present".format(username))
+
         elif user_input[0] == "like":
             if current_user is None:
                 print("Sign up to like first!")
@@ -229,7 +230,7 @@ if __name__ == '__main__':
                 user_id = get_user_id(current_user, conn)
                 liked_tracks_ids = get_liked_tracks_ids(user_id, conn)
                 for res_id in liked_tracks_ids:
-                    if (res_id != 0):
+                    if res_id != 0:
                         artist_name = get_artist_name(res_id, conn)
                         track_name = get_track_name(res_id, conn)
                         print(artist_name + " - " + track_name)
