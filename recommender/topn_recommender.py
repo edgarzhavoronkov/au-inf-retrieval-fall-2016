@@ -69,6 +69,33 @@ def top_n(vectors, vec_weights, n, user_items):
     return filtered if len(filtered) <= n else filtered[:n]
 
 
+def top_n_update(vectors, vec_weights, n, user_items, rec_vector):
+    for nbr, weight in zip(vectors, vec_weights):
+        rec_vector += nbr * weight
+    result = rec_vector.argsort().tolist()[0][::-1]
+    filtered = []
+    for rec in result:
+        if rec not in user_items:
+            filtered.append(rec)
+        if len(filtered) >= n:
+            break
+    return filtered if len(filtered) <= n else filtered[:n]
+
+
+def recommend_user_raw_many(user_idx, similarities, urm, nbr_sizes, N, equiv_weights = False):
+    nbr_indices, nbr_dists = get_neighbors(user_idx, similarities, urm, nbr_sizes[-1])
+    recs_vector = np.zeros(shape=(MAX_TRACKID,))
+    results = []
+    user_items = set(urm[user_idx].nonzero()[1])
+    for i in range(len(nbr_sizes) - 1):
+        current_nbrs = nbr_indices[nbr_sizes[i]:nbr_sizes[i+1]]
+        current_weights = nbr_dists[nbr_sizes[i]:nbr_sizes[i+1]]
+        if equiv_weights:
+            current_weights = np.ones(shape=current_weights.shape)
+        results.append(top_n_update(current_nbrs, current_weights, N, user_items, recs_vector))
+    return results
+
+
 def recommend_user_raw(user_idx, similarities, urm, nbr_size, N, equiv_weights = False):
     nbr_indices, nbr_dists = get_neighbors(user_idx, similarities, urm, nbr_size)
     return top_n(nbr_indices,
@@ -140,6 +167,31 @@ def average_metrics(train, test, sims, nbr_size, equal_weights=False):
         overall += 1
     return {'f1': (sum_f1 / overall), 'pr': sum_pr / overall, 'rc':sum_rc / overall}
 
+
+def average_metrics_many(train, test, sims, nbr_sizes, equal_weights = False):
+    sum_f1 = [0.0,] * len(nbr_sizes)
+    sum_pr = [0.0,] * len(nbr_sizes)
+    sum_rc = [0.0,] *  len(nbr_sizes)
+    overall = [0,] *  len(nbr_sizes)
+    for i in range(MAX_USERID):
+        test_recs = test[i].nonzero()[1]
+        local_N = len(test_recs)
+        if local_N == 0:
+            continue
+        usr_recommendations = recommend_user_raw_many(i, sims, train, [0,] + list(nbr_sizes), local_N, equal_weights)
+        ms = [metrics(rcm, test_recs) for rcm in usr_recommendations]
+        for i in range(len(nbr_sizes)):
+            f1, pr, rc = ms[i]
+            sum_f1[i] += f1
+            sum_pr[i] += pr
+            sum_rc[i] += rc
+            overall[i] += 1
+    for i in range(len(nbr_sizes)):
+        sum_f1[i] /= overall[i]
+        sum_pr[i] /= overall[i]
+        sum_rc[i] /= overall[i]
+    return {'f1': sum_f1, 'pr': sum_pr, 'rc': sum_rc}
+
 def run_test(nbr_size, train_ratio=0.6):
     train, test = read_sets("../data/urm.csv", train_ratio)
     sims = jaccard_similarities(train)
@@ -164,18 +216,16 @@ def get_single_recommendation(username):
 
 def plot_single_ratio(train_ratio, nbr_sizes):
     train, test = read_sets("../data/urm.csv", train_ratio)
-    sims1 = cosine_similarities(train)
-    sims2 = jaccard_similarities(train)
-    weighted = []
-    equal = []
-    for nbr_size in nbr_sizes:
-        weighted_f1 = average_metrics(train, test, sims1, nbr_size)["f1"]
-        weighted.append(weighted_f1)
-        equal_f1 = average_metrics(train, test, sims2, nbr_size)["f1"]
-        equal.append(equal_f1)
+    # sims = cosine_similarities(train)
+    sims = jaccard_similarities(train)
+
+    # for nbr_size in nbr_sizes:
+    weighted = average_metrics_many(train, test, sims, nbr_sizes)["f1"]
+    # equal = average_metrics_many(train, test, sims2, nbr_sizes)["f1"]
+
     plt.plot(nbr_sizes, weighted, "g-")
-    plt.plot(nbr_sizes, equal, "r-")
-    plt.legend(['cosine', 'jaccard'], loc='upper left')
+    # plt.plot(nbr_sizes, equal, "r-")
+    # plt.legend(['cosine', 'jaccard'], loc='upper left')
     plt.title("Train ratio: " + str(train_ratio))
     plt.show()
 
