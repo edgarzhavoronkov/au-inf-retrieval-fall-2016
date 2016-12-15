@@ -11,8 +11,8 @@ from random import random
 from sys import float_info
 from matplotlib import pyplot as plt
 
-MAX_TRACKID = 320495
-MAX_USERID = 1517
+MAX_TRACKID = 675513
+MAX_USERID = 1519
 
 
 def readUsers():
@@ -35,12 +35,12 @@ def readTracks():
 # the format is user:song, users are rows
 
 def readURM():
-    urm = np.zeros(shape=(MAX_USERID, MAX_TRACKID), dtype=np.float32)
+    urm = np.zeros(shape=(MAX_USERID, MAX_TRACKID), dtype=np.double)
     with open('../data/urm.csv', 'r', encoding='utf-8') as dataset_file:
         urm_reader = csv.reader(dataset_file, delimiter=';')
         for row in urm_reader:
             urm[int(row[0]), int(row[1])] = float(1.0)
-    return csc_matrix(urm, dtype=np.float32)
+    return csc_matrix(urm, dtype=np.double)
 
 
 # def cosine_similarities(urm):
@@ -105,8 +105,8 @@ def recommend_user_raw(user_idx, similarities, urm, nbr_size, N, equiv_weights =
 
 
 def read_sets(filename, train_ratio):
-    urm = np.zeros(shape=(MAX_USERID, MAX_TRACKID), dtype=np.float32)
-    test_data = np.zeros(shape=(MAX_USERID, MAX_TRACKID), dtype=np.float32)
+    urm = np.zeros(shape=(MAX_USERID, MAX_TRACKID), dtype=np.double)
+    test_data = np.zeros(shape=(MAX_USERID, MAX_TRACKID), dtype=np.double)
     with open(filename, 'r', encoding='utf-8') as dataset_file:
         urm_reader = csv.reader(dataset_file, delimiter=';')
         for row in urm_reader:
@@ -114,7 +114,7 @@ def read_sets(filename, train_ratio):
                 urm[int(row[0]), int(row[1])] = float(1.0)
             else:
                 test_data[int(row[0]), int(row[1])] = float(1.0)
-    return csc_matrix(urm, dtype=np.float32), csc_matrix(test_data, dtype=np.float32)
+    return csc_matrix(urm, dtype=np.double), csc_matrix(test_data, dtype=np.double)
 
 def cosine_similarities(mat):
     col_normed_mat = pp.normalize(mat, axis=1)
