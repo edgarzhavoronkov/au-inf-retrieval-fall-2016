@@ -3,7 +3,7 @@
 This is a simple CLI-based recommender engine for music. More details on wiki(in Russian)
 
 ## Running:
-To run, clone this repository and execute `python recommender.py`
+To run, clone this repository and execute `python recommender/recommender.py`
 You will need data, to operate on, you can download it from here: [link](https://drive.google.com/open?id=0B2baED5e1OEQSzhUWGh1Zk94QlE)  
 It launches in REPL mode, so you can type in following commands:
     
