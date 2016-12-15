@@ -1,11 +1,13 @@
 import sqlite3
+import sys
 
 import numpy as np
 from scipy.sparse import csr_matrix
 
-conn = sqlite3.connect('../data/data.sqlite')
-
 current_user = None
+MAX_TRACKID = None
+MAX_USERID = None
+
 
 def jaccard_similarities(mat):
     cols_sum = mat.getnnz(axis=0)
@@ -21,6 +23,7 @@ def jaccard_similarities(mat):
 
     return similarities
 
+
 def is_user_present(username, conn):
     c = conn.cursor()
     c.execute("SELECT COUNT(NAME) FROM USERS WHERE NAME=?", (username,))
@@ -32,6 +35,7 @@ def add_user(username, conn):
     c = conn.cursor()
     c.execute("INSERT INTO USERS(NAME) VALUES (?)", (username,))
     conn.commit()
+
 
 def signup(username, conn):
     global current_user
@@ -54,6 +58,7 @@ def get_max_uid(conn):
     for row in c.fetchall():
         return row[0]
 
+
 def get_max_trackid(conn):
     c = conn.cursor()
     c.execute("SELECT COUNT(ID) FROM TRACKS")
@@ -61,11 +66,8 @@ def get_max_trackid(conn):
         return row[0]
 
 
-MAX_TRACKID = get_max_trackid(conn) + 1
-MAX_USERID = get_max_uid(conn) + 1
-
-
 def read_urm(conn):
+    global MAX_USERID, MAX_TRACKID
     c = conn.cursor()
     urm = np.zeros(shape=(MAX_USERID, MAX_TRACKID), dtype=np.double)
     c.execute("SELECT * FROM LIKEDTRACK2USER")
@@ -80,6 +82,7 @@ def get_user_id(name, conn):
     for row in c.fetchall():
         return row[0]
 
+
 def get_track_id(track, artist, conn):
     c = conn.cursor()
     c.execute("SELECT TRACKS.ID "
@@ -87,6 +90,7 @@ def get_track_id(track, artist, conn):
               "WHERE ARTISTS.NAME=? AND TRACKS.NAME=? LIMIT 1 COLLATE NOCASE", (artist, track))
     for row in c.fetchall():
         return row[0]
+
 
 def get_track_name(tid, conn):
     c = conn.cursor()
@@ -96,7 +100,7 @@ def get_track_name(tid, conn):
 
 
 def get_similar_users_ids(dist, user_id, count, conn):
-    dists = dist[user_id,  : ].toarray()[0]
+    dists = dist[user_id, :].toarray()[0]
     sorted = np.flipud(np.argsort(dists.data))
     res = []
     for i in range(count + 1):
@@ -119,6 +123,7 @@ def get_liked_tracks_ids(user_id, conn):
 
 
 def get_frequencies(dist, user_id, similar_users_ids, conn):
+    global MAX_USERID, MAX_TRACKID
     res = [0] * MAX_TRACKID
     for uid in similar_users_ids:
         liked_tracks = get_liked_tracks_ids(uid, conn)
@@ -153,7 +158,7 @@ def recommend_by_user(username, conn):
         for track_id in liked_tracks_ids:
             frequencies[track_id] = 0
 
-        res_ids = np.flipud(np.argsort(frequencies))[0 : 10]
+        res_ids = np.flipud(np.argsort(frequencies))[0: 10]
         for res_id in res_ids:
             if res_id != 0:
                 artist_name = get_artist_name(res_id, conn)
@@ -170,7 +175,7 @@ def recommend_most_popular(conn):
         if top != 0:
             artist_name = get_artist_name(top, conn)
             track_name = get_track_name(top, conn)
-            print(artist_name + " - " + track_name + " (" + str(freqs[top]) +")")
+            print(artist_name + " - " + track_name + " (" + str(freqs[top]) + ")")
 
 
 def get_tracks_by_artist(artist, conn):
@@ -186,6 +191,14 @@ def get_tracks_by_artist(artist, conn):
 
 
 if __name__ == '__main__':
+    if len(sys.argv) != 2:
+        print("Please, provide path to database")
+        sys.exit(-1)
+    else:
+        dbpath = sys.argv[1]
+        conn = sqlite3.connect(dbpath)
+        MAX_TRACKID = get_max_trackid(conn)
+        MAX_USERID = get_max_uid(conn)
     print("Tiny recommender engine")
     while True:
         user_input = input(">> ").split(" ")
